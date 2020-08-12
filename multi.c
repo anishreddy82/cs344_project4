@@ -16,6 +16,7 @@ char buffer1[SIZE];
 char buffer2[SIZE];
 char buffer3[SIZE];
 // Number of items in the buffer, shared resource
+int end = 0;
 int count = 0;
 int count1 = 0;
 int count2 = 0;
@@ -24,11 +25,13 @@ int prod_idx = 0;
 // Index where the consumer will pick up the next item
 int con_idx = 0;
 // How many items will be produced
-int num_iterations = 10;
+int done = 1;
+int done1 = 1;
 
 // Initialize the mutex
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
+pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
 // Initialize the condition variables
 pthread_cond_t cv_buffer1 = PTHREAD_COND_INITIALIZER;
 pthread_cond_t cv_buffer2 = PTHREAD_COND_INITIALIZER;
@@ -41,19 +44,27 @@ char* produce()
 {
     char *line = NULL;
     size_t size;
+    // getline(&line, &size, stdin);
+    //     if(strcmp(line, "DONE\n") == 0){
+    //         exit(1);
+    //     }
+    //     else{
+    //         strcpy(buffer, line);
+    //         count = 1;
+    //     }
+
     if(getline(&line, &size, stdin) == -1){
-        exit(0);
+        done = 0;
     }
-    else if(strcmp(line, "DONE\n") == 0){
-        strcpy(buffer, line);
+    else if(strcmp(line, "DONE\n")==0) {
+        done = 0;
+        exit(1);
     }
     else{
         strcpy(buffer, line);
+        count = 1;
     }
-    // printf(buffer);
-    count = 1;
     return buffer;
-
 }
 
 /*
@@ -61,15 +72,18 @@ char* produce()
 */
 void *producer(void *args)
 {
+    while(done != 0 || buffer != '\0'){
         pthread_mutex_lock(&mutex);
         while(count == 1){
             pthread_cond_wait(&cv_buffer1, &mutex);
         }
         produce();
+        printf("%s\n", buffer);
         // Signal to the consumer that the buffer is no longer empty
         pthread_cond_signal(&cv_buffer1);
         // Unlock the mutex
         pthread_mutex_unlock(&mutex);
+    }
     return NULL;
 }
 
@@ -80,7 +94,8 @@ char *consume()
 {
     int i;
     int size = sizeof(buffer);
-    memcpy(&buffer1, &buffer, size);
+    strcpy(buffer1, buffer);
+    //memcpy(&buffer1, &buffer, size);
     for(i = 0; i < sizeof(buffer); i++){
         if(buffer1[i] == '\n'){
             buffer1[i] = ' ';
@@ -97,22 +112,25 @@ char *consume()
 void *consumer(void *args)
 {
       // Lock the mutex before checking if the buffer has data  
+    while(done1 != 0){
       pthread_mutex_lock(&mutex);
       while(count == 0){
         pthread_cond_wait(&cv_buffer1, &mutex);
       }
       consume();
+      printf("%s\n", buffer1);
       // Signal to the producer that the buffer has space
       pthread_cond_signal(&cv_buffer2);
-      pthread_cond_signal(&cv_buffer1);
+      //pthread_cond_signal(&cv_buffer1);
       // Unlock the mutex
       pthread_mutex_unlock(&mutex);
+    }
+
     return NULL;
 }
 
 
 char* consume1(){
-
     int size = sizeof(buffer1);
     int i, j;
     if(buffer1 == NULL){
@@ -132,17 +150,20 @@ char* consume1(){
 }
 
 void *consumer1(void *args){
+    while(buffer1 != '\0'){
       // Lock the mutex before checking if the buffer has data      
-      pthread_mutex_lock(&mutex);
+      pthread_mutex_lock(&mutex1);
       while(count1 == 0){
-          pthread_cond_wait(&cv_buffer2, &mutex);
+          pthread_cond_wait(&cv_buffer2, &mutex1);
       }
       consume1();
+      printf("%s\n", buffer2);
       // Signal to the producer that the buffer has space
-      pthread_cond_signal(&cv_buffer2);
+      //pthread_cond_signal(&cv_buffer2);
       pthread_cond_signal(&cv_buffer3);
       // Unlock the mutex
-      pthread_mutex_unlock(&mutex);
+      pthread_mutex_unlock(&mutex1);
+    }
     return NULL;
 }
 
@@ -156,14 +177,18 @@ char* consume2(){
 }
 
 void *consumer2(void *args){
-    pthread_mutex_lock(&mutex);
+    while(buffer2 != '\0'){
+    pthread_mutex_lock(&mutex2);
     while(count2 == 0){
-        pthread_cond_wait(&cv_buffer3, &mutex);
+        pthread_cond_wait(&cv_buffer3, &mutex2);
     }
     consume2();
     printf("%s\n", buffer3);
+    pthread_cond_signal(&cv_buffer1);
+    pthread_cond_signal(&cv_buffer2);
     pthread_cond_signal(&cv_buffer3);
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&mutex2);
+    }
     return NULL;
 }
 
